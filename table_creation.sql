@@ -1,40 +1,34 @@
-/*
-////////////////////////////////////////////////////////////////////////////////
+/*//////////////////////////////////////////////////////////////////////////////
 // Создание таблицы студентов
 ////////////////////////////////////////////////////////////////////////////////
 */
-CREATE TABLE STUDENTS 
-(
-  STUDENT_ID NUMBER(7, 0) NOT NULL,
-  STUDENT_NAME VARCHAR2(40 BYTE) NOT NULL,
-  STUDENT_GROUP VARCHAR2(7 BYTE) NOT NULL,
-  STUDENT_GRANT NUMBER(7, 2)
+
+CREATE TABLE students (
+    student_id      NUMBER(7,0) NOT NULL,
+    student_name    VARCHAR2(40 BYTE) NOT NULL,
+    student_group   VARCHAR2(7 BYTE) NOT NULL,
+    student_grant   NUMBER(7,2)
 );
 
-ALTER TABLE STUDENTS
-ADD CONSTRAINT STUDENTS_ID_PK PRIMARY KEY 
-(
-  STUDENT_ID 
-)
-ENABLE;
+ALTER TABLE students ADD CONSTRAINT students_id_pk PRIMARY KEY ( student_id ) ENABLE;
 
-ALTER TABLE STUDENTS
-ADD CONSTRAINT STUDENT_NAME_NN CHECK 
-("STUDENT_NAME" IS NOT NULL)
-ENABLE;
+ALTER TABLE students
+    ADD CONSTRAINT student_name_nn CHECK ( "STUDENT_NAME" IS NOT NULL ) ENABLE;
 
-ALTER TABLE STUDENTS
-ADD CONSTRAINT STUDENT_GROUP_NN CHECK 
-("STUDENT_GROUP" IS NOT NULL)
-ENABLE;
+ALTER TABLE students
+    ADD CONSTRAINT student_group_nn CHECK ( "STUDENT_GROUP" IS NOT NULL ) ENABLE;
 
-COMMENT ON COLUMN STUDENTS.STUDENT_ID IS 'Номер студенческого билета';
+COMMENT ON COLUMN students.student_id IS
+    'Номер студенческого билета';
 
-COMMENT ON COLUMN STUDENTS.STUDENT_NAME IS 'Имя студента';
+COMMENT ON COLUMN students.student_name IS
+    'Имя студента';
 
-COMMENT ON COLUMN STUDENTS.STUDENT_GROUP IS 'Группа студента';
+COMMENT ON COLUMN students.student_group IS
+    'Группа студента';
 
-COMMENT ON COLUMN STUDENTS.STUDENT_GRANT IS 'Стипендия студента';
+COMMENT ON COLUMN students.student_grant IS
+    'Стипендия студента';
 
 
 /*
@@ -42,23 +36,22 @@ COMMENT ON COLUMN STUDENTS.STUDENT_GRANT IS 'Стипендия студента';
 // Создание таблицы зачеток
 ////////////////////////////////////////////////////////////////////////////////
 */
-CREATE TABLE RECORDBOOKS 
-(
-  STUDENT_ID NUMBER(7, 0) NOT NULL
-);
 
-ALTER TABLE RECORDBOOKS
-ADD CONSTRAINT STUDENT_ID_FK FOREIGN KEY
-(
-  STUDENT_ID 
-)
-REFERENCES STUDENTS
-(
-  STUDENT_ID 
-)
-ENABLE;
+CREATE TABLE recordbooks (
+    student_id   NUMBER(7,0) NOT NULL,
+    student_subjects type_subjects
+)NESTED TABLE student_subjects STORE AS nested_student_subjects;
 
-COMMENT ON COLUMN RECORDBOOKS.STUDENT_ID IS 'Номер студенческого билета';
+ALTER TABLE recordbooks
+    ADD CONSTRAINT student_id_fk FOREIGN KEY ( student_id )
+        REFERENCES students ( student_id )
+    ENABLE;
+
+COMMENT ON COLUMN recordbooks.student_id IS
+    'Номер студенческого билета';
+    
+COMMENT ON COLUMN recordbooks.student_subjects IS
+    'список предметов для сдачи';
 
 
 /*
@@ -66,36 +59,26 @@ COMMENT ON COLUMN RECORDBOOKS.STUDENT_ID IS 'Номер студенческого билета';
 // Создание таблицы предметов
 ////////////////////////////////////////////////////////////////////////////////
 */
-CREATE TABLE SUBJECTS 
-(
-  SUBJECT_NAME VARCHAR2(20 BYTE) NOT NULL,
-  SUBJECT_DATE DATE NOT NULL,
-  SUBJECT_REPORTING_FORM VARCHAR2(20) NOT NULL,
-  SUBJECT_GROUP VARCHAR2(7 BYTE) NOT NULL,
-  SUBJECT_TEACHER_NAME VARCHAR2(40) NOT NULL 
+
+CREATE TABLE subjects (
+    subject_name             VARCHAR2(20 BYTE) NOT NULL,
+    subject_date             DATE NOT NULL,
+    subject_reporting_form   VARCHAR2(20) NOT NULL,
+    subject_group            VARCHAR2(7 BYTE) NOT NULL,
+    subject_teacher_name     VARCHAR2(40) NOT NULL
 );
 
-ALTER TABLE SUBJECTS
-ADD CONSTRAINT SUBJECT_NAME_NN CHECK 
-("SUBJECT_NAME" IS NOT NULL)
-ENABLE;
+ALTER TABLE subjects
+    ADD CONSTRAINT subject_name_nn CHECK ( "SUBJECT_NAME" IS NOT NULL ) ENABLE;
 
-ALTER TABLE SUBJECTS
-ADD CONSTRAINT SUBJECT_DATE_NN CHECK 
-("SUBJECT_DATE" IS NOT NULL)
-ENABLE;
+ALTER TABLE subjects
+    ADD CONSTRAINT subject_date_nn CHECK ( "SUBJECT_DATE" IS NOT NULL ) ENABLE;
 
-ALTER TABLE SUBJECTS
-ADD CONSTRAINT SUBJECT_REPORTING_FORM_NN CHECK 
-("SUBJECT_REPORTING_FORM" IS NOT NULL)
-ENABLE;
+ALTER TABLE subjects
+    ADD CONSTRAINT subject_reporting_form_nn CHECK ( "SUBJECT_REPORTING_FORM" IS NOT NULL ) ENABLE;
 
-ALTER TABLE SUBJECTS
-ADD CONSTRAINT SUBJECT_GROUP_NN CHECK 
-("SUBJECT_GROUP" IS NOT NULL)
-ENABLE;
+ALTER TABLE subjects
+    ADD CONSTRAINT subject_group_nn CHECK ( "SUBJECT_GROUP" IS NOT NULL ) ENABLE;
 
-ALTER TABLE SUBJECTS
-ADD CONSTRAINT SUBJECT_TEACHER_NAME_NN CHECK 
-("SUBJECT_TEACHER_NAME" IS NOT NULL)
-ENABLE;
+ALTER TABLE subjects
+    ADD CONSTRAINT subject_teacher_name_nn CHECK ( "SUBJECT_TEACHER_NAME" IS NOT NULL ) ENABLE;
