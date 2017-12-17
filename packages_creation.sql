@@ -30,7 +30,7 @@ CREATE OR REPLACE PACKAGE session_pkg IS
 END session_pkg;
 /
 
-create or replace PACKAGE BODY session_pkg AS
+CREATE OR REPLACE PACKAGE BODY session_pkg AS
     /* Добавление студента */
 
     PROCEDURE addstudent (
@@ -40,16 +40,36 @@ create or replace PACKAGE BODY session_pkg AS
     )
         AS
     BEGIN
-        INSERT INTO hr.students (
-            hr.students.student_id,
-            hr.students.student_name,
-            hr.students.student_group
-        ) VALUES (
-            student_id,
-            student_name,
-            student_group
-        );
+        DECLARE
+            student_subjects   type_subjects := type_subjects ();
+            CURSOR subjects_list IS SELECT
+                *
+                                    FROM
+                subjects
+                                    WHERE
+                subjects.subject_group = student_group;
 
+            iterator          INTEGER := 1;
+        BEGIN
+            INSERT INTO hr.students (
+                hr.students.student_id,
+                hr.students.student_name,
+                hr.students.student_group
+            ) VALUES (
+                student_id,
+                student_name,
+                student_group
+            );
+
+            FOR subject IN subjects_list LOOP
+                student_subjects.extend ();
+                student_subjects(iterator) := type_student_subject(subject.subject_name,subject.subject_reporting_form, NULL);
+                iterator := iterator + 1;
+            END LOOP;
+            
+            INSERT INTO recordbooks(recordbooks.student_id, recordbooks.student_subjects)
+            VALUES (student_id, student_subjects);
+        END;
     END addstudent;
 
     /* Добавление предмета */
@@ -197,14 +217,34 @@ create or replace PACKAGE BODY session_pkg AS
     BEGIN
         DECLARE
             CURSOR s_groups IS SELECT DISTINCT
-                hr.subjects.subject_group
+                subjects.subject_group
                                FROM
-                hr.subjects;
+                subjects;
 
-            students_group   VARCHAR2(7);
+            CURSOR group_cursor (
+                stdnt_group VARCHAR2
+            ) IS SELECT
+                students.student_group
+                 FROM
+                students
+                 WHERE
+                students.student_group = stdnt_group;
+
+            stud   group_cursor%rowtype;
         BEGIN
             FOR s_group IN s_groups LOOP
-                dbms_output.put_line(s_group.subject_group);
+                OPEN group_cursor(s_group.subject_group);
+                FETCH group_cursor INTO stud;
+                IF
+                    group_cursor%rowcount = 0
+                THEN
+                    DELETE FROM subjects
+                    WHERE
+                        subjects.subject_group = s_group.subject_group;
+
+                END IF;
+
+                CLOSE group_cursor;
             END LOOP;
 
         END;
