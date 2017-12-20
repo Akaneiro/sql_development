@@ -45,6 +45,7 @@ CREATE TABLE recordbooks (
 ALTER TABLE recordbooks
     ADD CONSTRAINT student_id_fk FOREIGN KEY ( student_id )
         REFERENCES students ( student_id )
+        ON DELETE CASCADE;
     ENABLE;
 
 COMMENT ON COLUMN recordbooks.student_id IS
@@ -82,3 +83,9 @@ ALTER TABLE subjects
 
 ALTER TABLE subjects
     ADD CONSTRAINT subject_teacher_name_nn CHECK ( "SUBJECT_TEACHER_NAME" IS NOT NULL ) ENABLE;
+    
+CREATE UNIQUE INDEX uq_subjects_same_pair
+    ON subjects(subject_name, subject_reporting_form, subject_group);
+    
+CREATE UNIQUE INDEX uq_subjects_same_day
+    ON subjects(subject_group, subject_date);

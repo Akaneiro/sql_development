@@ -1,5 +1,11 @@
 CREATE OR REPLACE PACKAGE session_pkg IS
-    PROCEDURE getstudents;
+    TYPE student_in_list IS RECORD ( s_id NUMBER(7,0),
+    s_name VARCHAR2(40 BYTE),
+    s_group VARCHAR2(7 BYTE),
+    s_grant NUMBER(7,2) );
+    PROCEDURE getstudents (
+        sort_by_group NUMBER
+    );
 
     PROCEDURE getsubjects;
 
@@ -27,6 +33,12 @@ CREATE OR REPLACE PACKAGE session_pkg IS
 
     PROCEDURE deleteemptygroups;
 
+    PROCEDURE passexam (
+        s_id        NUMBER,
+        subj_name   VARCHAR2,
+        subj_grade       NUMBER
+    );
+
 END session_pkg;
 /
 
@@ -49,12 +61,12 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                                     WHERE
                 subjects.subject_group = student_group;
 
-            iterator          INTEGER := 1;
+            iterator           INTEGER := 1;
         BEGIN
-            INSERT INTO hr.students (
-                hr.students.student_id,
-                hr.students.student_name,
-                hr.students.student_group
+            INSERT INTO students (
+                students.student_id,
+                students.student_name,
+                students.student_group
             ) VALUES (
                 student_id,
                 student_name,
@@ -62,13 +74,21 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             );
 
             FOR subject IN subjects_list LOOP
+                dbms_output.put_line(3);
                 student_subjects.extend ();
-                student_subjects(iterator) := type_student_subject(subject.subject_name,subject.subject_reporting_form, NULL);
+                student_subjects(iterator) := type_student_subject(subject.subject_name,subject.subject_reporting_form,NULL);
+
                 iterator := iterator + 1;
             END LOOP;
-            
-            INSERT INTO recordbooks(recordbooks.student_id, recordbooks.student_subjects)
-            VALUES (student_id, student_subjects);
+
+            INSERT INTO recordbooks (
+                recordbooks.student_id,
+                recordbooks.student_subjects
+            ) VALUES (
+                student_id,
+                student_subjects
+            );
+
         END;
     END addstudent;
 
@@ -83,12 +103,12 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
     )
         AS
     BEGIN
-        INSERT INTO hr.subjects (
-            hr.subjects.subject_name,
-            hr.subjects.subject_date,
-            hr.subjects.subject_reporting_form,
-            hr.subjects.subject_group,
-            hr.subjects.subject_teacher_name
+        INSERT INTO subjects (
+            subjects.subject_name,
+            subjects.subject_date,
+            subjects.subject_reporting_form,
+            subjects.subject_group,
+            subjects.subject_teacher_name
         ) VALUES (
             subject_name,
             subject_date,
@@ -106,32 +126,82 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
     )
         AS
     BEGIN
-        DELETE FROM hr.students
-        WHERE
-            hr.students.student_id = s_id;
+        DECLARE
+            student_subjects   type_subjects := type_subjects ();
+            CURSOR subjects_list IS SELECT
+                student_subjects
+                                    FROM
+                recordbooks
+                                    WHERE
+                recordbooks.student_id = s_id;
 
+            iterator           INTEGER := 1;
+            need_fire          BOOLEAN;
+            subject            type_student_subject;
+        BEGIN
+            need_fire := false;
+            OPEN subjects_list;
+            FETCH subjects_list INTO student_subjects;
+                -- dbms_output.put_line(student_subjects.COUNT);
+            LOOP
+                subject := student_subjects(iterator);
+                dbms_output.put_line(subject.subject_grade);
+                IF
+                    ( subject.subject_grade IS NULL )
+                THEN
+                    need_fire := true;
+                END IF;
+                -- dbms_output.put_line(3);
+                iterator := iterator + 1;
+                EXIT WHEN iterator > student_subjects.count OR need_fire = true;
+            END LOOP;
+
+            CLOSE subjects_list;
+            IF
+                ( need_fire = true )
+            THEN
+                DELETE FROM students
+                WHERE
+                    students.student_id = s_id;
+
+            END IF;
+
+        END;
     END firestudent;
 
     /* список студентов */
 
-    PROCEDURE getstudents
+    PROCEDURE getstudents (
+        sort_by_group NUMBER
+    )
         AS
     BEGIN
         DECLARE
-            CURSOR students_list IS SELECT
-                *
-                                    FROM
-                hr.students;
-
+            TYPE cur IS REF CURSOR;
+            students_list   cur;
+            student         student_in_list;
         BEGIN
-            FOR student IN students_list LOOP
-                dbms_output.put_line(student.student_id
+            IF
+                ( sort_by_group = 1 )
+            THEN
+                OPEN students_list FOR 'Select * from students ORDER BY students.student_group';
+
+            ELSE
+                OPEN students_list FOR 'Select * from students';
+
+            END IF;
+
+            LOOP
+                FETCH students_list INTO student;
+                EXIT WHEN students_list%notfound;
+                dbms_output.put_line(student.s_id
                 || ' | '
-                || student.student_name
+                || student.s_name
                 || ' | '
-                || student.student_group
+                || student.s_group
                 || ' | '
-                || student.student_grant);
+                || student.s_grant);
+
             END LOOP;
 
         END;
@@ -146,7 +216,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             CURSOR subjects_list IS SELECT
                 *
                                     FROM
-                hr.subjects;
+                subjects;
 
         BEGIN
             FOR subject IN subjects_list LOOP
@@ -176,16 +246,16 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 student_name,
                 student_group
                                FROM
-                hr.students
+                students
                                WHERE
-                hr.students.student_id = s_id;
+                students.student_id = s_id;
 
             CURSOR s_grades IS SELECT
                 student_subjects
                                FROM
-                hr.recordbooks
+                recordbooks
                                WHERE
-                hr.recordbooks.student_id = s_id;
+                recordbooks.student_id = s_id;
 
             index_max   PLS_INTEGER;
             g_index     PLS_INTEGER;
@@ -249,5 +319,15 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
 
         END;
     END deleteemptygroups;
+
+    PROCEDURE passexam (
+        s_id         NUMBER,
+        subj_name    VARCHAR2,
+        subj_grade   NUMBER
+    )
+        AS
+    BEGIN
+        dbms_output.put_line(3);
+    END passexam;
 
 END session_pkg;
