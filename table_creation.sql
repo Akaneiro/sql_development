@@ -46,7 +46,6 @@ ALTER TABLE recordbooks
     ADD CONSTRAINT student_id_fk FOREIGN KEY ( student_id )
         REFERENCES students ( student_id )
         ON DELETE CASCADE;
-    ENABLE;
 
 COMMENT ON COLUMN recordbooks.student_id IS
     'Номер студенческого билета';

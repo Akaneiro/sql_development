@@ -42,7 +42,7 @@ CREATE OR REPLACE PACKAGE session_pkg IS
 END session_pkg;
 /
 
-CREATE OR REPLACE PACKAGE BODY session_pkg AS
+create or replace PACKAGE BODY session_pkg AS
     /* Добавление студента */
 
     PROCEDURE addstudent (
@@ -279,6 +279,76 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
 
         END;
     END getstudentgrades;
+    
+    -- Успеваемость студентов группы или всего университета
+
+    PROCEDURE getseveralstudentsgrades (
+        s_group VARCHAR2
+    )
+        AS
+    BEGIN
+        DECLARE
+            TYPE cur IS REF CURSOR;
+            students_list   cur;
+            student         student_in_list;
+            CURSOR grades_cursor (
+                s_id NUMBER
+            ) IS SELECT
+                recordbooks.student_subjects
+                 FROM
+                recordbooks
+                 WHERE
+                recordbooks.student_id = s_id;
+
+            iterator        NUMBER;
+            subjects        type_subjects;
+        BEGIN
+            IF
+                ( s_group IS NULL )
+            THEN
+                OPEN students_list FOR SELECT
+                    *
+                                       FROM
+                    students
+                ORDER BY
+                    students.student_group,
+                    students.student_id;
+
+            ELSE
+                OPEN students_list FOR SELECT
+                    *
+                                       FROM
+                    students
+                                       WHERE
+                    students.student_group = s_group;
+
+            END IF;
+
+            LOOP
+                FETCH students_list INTO student;
+                EXIT WHEN students_list%notfound;
+                dbms_output.put_line(student.s_id
+                || ' | '
+                || student.s_name
+                || ' | '
+                || student.s_group);
+
+                FOR grades IN grades_cursor(student.s_id) LOOP
+                    subjects := grades.student_subjects;
+                    FOR iterator IN 1..subjects.count LOOP
+                        dbms_output.put_line(subjects(iterator).subject_name
+                        || ' | '
+                        || subjects(iterator).subject_reporting_form
+                        || ' | '
+                        || subjects(iterator).subject_grade);
+                    END LOOP;
+
+                END LOOP;
+
+            END LOOP;
+
+        END;
+    END getseveralstudentsgrades;
 
     -- Удаление пустых групп
 
