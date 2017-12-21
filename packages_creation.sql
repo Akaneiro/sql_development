@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE session_pkg IS
+create or replace PACKAGE session_pkg IS
     TYPE student_in_list IS RECORD ( s_id NUMBER(7,0),
     s_name VARCHAR2(40 BYTE),
     s_group VARCHAR2(7 BYTE),
@@ -31,13 +31,19 @@ CREATE OR REPLACE PACKAGE session_pkg IS
         s_id NUMBER
     );
 
+    PROCEDURE getseveralstudentsgrades (
+        s_group VARCHAR2
+    );
+
     PROCEDURE deleteemptygroups;
 
     PROCEDURE passexam (
-        s_id        NUMBER,
-        subj_name   VARCHAR2,
-        subj_grade       NUMBER
+        s_id         NUMBER,
+        subj_name    VARCHAR2,
+        subj_grade   NUMBER
     );
+    
+    PROCEDURE sessionlength;
 
 END session_pkg;
 /
@@ -103,20 +109,61 @@ create or replace PACKAGE BODY session_pkg AS
     )
         AS
     BEGIN
-        INSERT INTO subjects (
-            subjects.subject_name,
-            subjects.subject_date,
-            subjects.subject_reporting_form,
-            subjects.subject_group,
-            subjects.subject_teacher_name
-        ) VALUES (
-            subject_name,
-            subject_date,
-            subject_reporting_form,
-            subject_group,
-            subject_teacher_name
-        );
+        DECLARE
+            CURSOR group_cursor (
+                stdnt_group VARCHAR2
+            ) IS SELECT
+                students.student_id
+                 FROM
+                students
+                 WHERE
+                students.student_group = stdnt_group;
 
+            CURSOR recordbooks_cursor (
+                s_id NUMBER
+            ) IS SELECT
+                recordbooks.student_subjects
+                 FROM
+                recordbooks
+                 WHERE
+                recordbooks.student_id = s_id;
+
+            s_id       NUMBER;
+            subjects   type_subjects;
+        BEGIN
+            INSERT INTO subjects (
+                subjects.subject_name,
+                subjects.subject_date,
+                subjects.subject_reporting_form,
+                subjects.subject_group,
+                subjects.subject_teacher_name
+            ) VALUES (
+                subject_name,
+                subject_date,
+                subject_reporting_form,
+                subject_group,
+                subject_teacher_name
+            );
+
+            OPEN group_cursor(subject_group);
+            LOOP
+                FETCH group_cursor INTO s_id;
+                EXIT WHEN group_cursor%notfound;
+                OPEN recordbooks_cursor(s_id);
+                FETCH recordbooks_cursor INTO subjects;
+                subjects.extend;
+                subjects(subjects.last) := type_student_subject(subject_name,subject_reporting_form,NULL);
+                UPDATE recordbooks
+                    SET
+                        student_subjects = subjects
+                WHERE
+                    student_id = s_id;
+
+                CLOSE recordbooks_cursor;
+            END LOOP;
+
+            CLOSE group_cursor;
+        END;
     END addsubject;
 
     /* Отчисление студента */
@@ -397,7 +444,87 @@ create or replace PACKAGE BODY session_pkg AS
     )
         AS
     BEGIN
-        dbms_output.put_line(3);
+        DECLARE
+            CURSOR recordbook_cursor IS SELECT
+                recordbooks.student_subjects
+                                        FROM
+                recordbooks
+                                        WHERE
+                recordbooks.student_id = s_id;
+
+            iterator        NUMBER := 1;
+            subjects        type_subjects;
+            can_pass_exam   BOOLEAN;
+        BEGIN
+            OPEN recordbook_cursor;
+            FETCH recordbook_cursor INTO subjects; -- Запись одна
+            CLOSE recordbook_cursor;
+            LOOP
+                EXIT WHEN iterator > subjects.last;
+                IF
+                    ( subjects(iterator).subject_name = subj_name )
+                THEN
+                    IF
+                        ( subjects(iterator).subject_grade IS NULL OR subjects(iterator).subject_grade < 3 )
+                    THEN
+                        can_pass_exam := true;
+                        EXIT;
+                    END IF;
+
+                END IF;
+
+                iterator := iterator + 1;
+            END LOOP;
+
+            IF
+                can_pass_exam = true
+            THEN
+                subjects(iterator).subject_grade := subj_grade;
+                UPDATE recordbooks
+                    SET
+                        student_subjects = subjects
+                WHERE
+                    student_id = s_id;
+
+            ELSE
+                dbms_output.put_line('Нельзя пересдать данный предмет!');
+            END IF;
+
+        END;
     END passexam;
+
+    PROCEDURE sessionlength
+        AS
+    BEGIN
+        DECLARE
+            CURSOR group_cursor IS SELECT DISTINCT
+                subjects.subject_group
+                                   FROM
+                subjects;
+
+            days         NUMBER;
+            student_group   VARCHAR2(7 BYTE);
+            CURSOR group_session_cursor (
+                subj_group VARCHAR2
+            ) IS SELECT
+                MAX(subject_date) - MIN(subject_date)
+                 FROM
+                subjects
+                 WHERE
+                subject_group = student_group;
+
+        BEGIN
+            FOR stud_group IN group_cursor LOOP
+                student_group := stud_group.subject_group;
+                dbms_output.put_line(student_group
+                || ': ');
+                OPEN group_session_cursor(student_group);
+                FETCH group_session_cursor INTO days;
+                dbms_output.put_line(days||' дней');
+                CLOSE group_session_cursor;
+            END LOOP;
+
+        END;
+    END sessionlength;
 
 END session_pkg;
