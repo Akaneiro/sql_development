@@ -63,12 +63,12 @@ create or replace PACKAGE session_pkg IS
 END session_pkg;
 /
 
-create or replace PACKAGE BODY session_pkg AS
+CREATE OR REPLACE PACKAGE BODY session_pkg AS
     /* Добавление студента */
 
     PROCEDURE addstudent (
-        student_name    VARCHAR2,
-        student_group   VARCHAR2
+        student_name VARCHAR2,
+        student_group VARCHAR2
     )
         AS
     BEGIN
@@ -81,8 +81,7 @@ create or replace PACKAGE BODY session_pkg AS
                                     WHERE
                 subjects.subject_group = student_group;
 
-            iterator           INTEGER := 1;
-            s_id NUMBER;
+            s_id               NUMBER;
         BEGIN
             INSERT INTO students (
                 students.student_name,
@@ -93,16 +92,24 @@ create or replace PACKAGE BODY session_pkg AS
             );
 
             FOR subject IN subjects_list LOOP
-                dbms_output.put_line(3);
                 student_subjects.extend ();
-                student_subjects(iterator) := type_student_subject(subject.subject_name,subject.subject_reporting_form,NULL);
+                student_subjects(student_subjects.last) := type_student_subject(subject.subject_name,subject.subject_reporting_form,0);
 
-                iterator := iterator + 1;
             END LOOP;
 
-                select student_id INTO s_id
-                  from students
-                 where students.student_id = ( select max(student_id) from students );
+            SELECT
+                student_id
+            INTO
+                s_id
+            FROM
+                students
+            WHERE
+                students.student_id = (
+                    SELECT
+                        MAX(student_id)
+                    FROM
+                        students
+                );
 
             INSERT INTO recordbooks (
                 recordbooks.student_id,
@@ -151,6 +158,7 @@ create or replace PACKAGE BODY session_pkg AS
             exam_count     NUMBER;
             invalid_credit_count EXCEPTION;
             invalid_exams_count EXCEPTION;
+            uncorrect_data EXCEPTION;
         BEGIN
             IF
                 ( s_reporting_form = 'зачет' )
@@ -225,6 +233,10 @@ create or replace PACKAGE BODY session_pkg AS
         EXCEPTION
             WHEN invalid_credit_count THEN
                 dbms_output.put_line('Количество зачетов слишком велико!');
+            WHEN invalid_exams_count THEN
+                dbms_output.put_line('количество экзаменов слишком велико!');
+            WHEN OTHERS THEN
+                dbms_output.put_line('Ошибка введенных данных');
         END;
     END addsubject;
 
@@ -247,11 +259,19 @@ create or replace PACKAGE BODY session_pkg AS
             iterator           INTEGER := 1;
             need_fire          BOOLEAN;
             subject            type_student_subject;
+            student_not_found_exception EXCEPTION;
+            empty_subjects_list_exception EXCEPTION;
         BEGIN
             need_fire := false;
             OPEN subjects_list;
             FETCH subjects_list INTO student_subjects;
-                -- dbms_output.put_line(student_subjects.COUNT);
+            IF
+                subjects_list%notfound
+            THEN
+                CLOSE subjects_list;
+                RAISE student_not_found_exception;
+            END IF;
+            CLOSE subjects_list;
             LOOP
                 EXIT WHEN iterator > student_subjects.count OR need_fire = true;
                 subject := student_subjects(iterator);
@@ -267,7 +287,6 @@ create or replace PACKAGE BODY session_pkg AS
                 iterator := iterator + 1;
             END LOOP;
 
-            CLOSE subjects_list;
             IF
                 ( need_fire = true )
             THEN
@@ -277,6 +296,11 @@ create or replace PACKAGE BODY session_pkg AS
 
             END IF;
 
+        EXCEPTION
+            WHEN student_not_found_exception THEN
+                dbms_output.put_line('Студент не найден');
+            WHEN OTHERS THEN
+                dbms_output.put_line('Неизвестная ошибка');
         END;
     END firestudent;
 
@@ -354,39 +378,50 @@ create or replace PACKAGE BODY session_pkg AS
         AS
     BEGIN
         DECLARE
-            CURSOR students IS SELECT
+            CURSOR student_cursor IS SELECT
+                student_id,
                 student_name,
-                student_group
-                               FROM
-                students
-                               WHERE
-                students.student_id = s_id;
-
-            CURSOR s_grades IS SELECT
                 student_subjects
-                               FROM
-                recordbooks
-                               WHERE
-                recordbooks.student_id = s_id;
+                                     FROM
+                (
+                    SELECT
+                        students.student_id student_id,
+                        students.student_name student_name,
+                        students.student_group student_group,
+                        students.student_grant student_grant,
+                        recordbooks.student_id student_id_0,
+                        recordbooks.student_subjects student_subjects
+                    FROM
+                        students
+                        INNER JOIN recordbooks ON students.student_id = recordbooks.student_id
+                ) s_students
+                                     WHERE
+                s_students.student_id = s_id;
 
-            index_max   PLS_INTEGER;
-            g_index     PLS_INTEGER;
+            student    student_cursor%rowtype;
+            iterator   NUMBER;
+            student_not_found_exception EXCEPTION;
         BEGIN
-            FOR student IN students LOOP
-                dbms_output.put_line('Успеваемость студента '
-                || student.student_name);
+            OPEN student_cursor;
+            FETCH student_cursor INTO student;
+            IF
+                student_cursor%notfound
+            THEN
+                CLOSE student_cursor;
+                RAISE student_not_found_exception;
+            END IF;
+            CLOSE student_cursor;
+            dbms_output.put_line('Успеваемость студента '
+            || student.student_name);
+            FOR iterator IN 1..student.student_subjects.count LOOP
+                dbms_output.put_line(student.student_subjects(iterator).subject_name
+                || ': '
+                || student.student_subjects(iterator).subject_grade);
             END LOOP;
 
-            FOR grades IN s_grades LOOP
-                index_max := grades.student_subjects.count;
-                FOR g_index IN 1..index_max LOOP
-                    dbms_output.put_line(grades.student_subjects(g_index).subject_name
-                    || ': '
-                    || grades.student_subjects(g_index).subject_grade);
-                END LOOP;
-
-            END LOOP;
-
+        EXCEPTION
+            WHEN student_not_found_exception THEN
+                dbms_output.put_line('Студент не найден');
         END;
     END getstudentgrades;
     
@@ -481,18 +516,29 @@ create or replace PACKAGE BODY session_pkg AS
                  WHERE
                 students.student_group = stdnt_group;
 
-            stud   group_cursor%rowtype;
+            stud          group_cursor%rowtype;
+            group_count   NUMBER;
         BEGIN
             FOR s_group IN s_groups LOOP
                 OPEN group_cursor(s_group.subject_group);
-                FETCH group_cursor INTO stud;
+                SELECT
+                    COUNT(*)
+                INTO
+                    group_count
+                FROM
+                    students
+                WHERE
+                    students.student_group = s_group.subject_group;
+
                 IF
-                    group_cursor%rowcount = 0
+                    group_count = 0
                 THEN
                     DELETE FROM subjects
                     WHERE
                         subjects.subject_group = s_group.subject_group;
 
+                    dbms_output.put_line('Удалена группа '
+                    || s_group.subject_group);
                 END IF;
 
                 CLOSE group_cursor;
@@ -522,9 +568,15 @@ create or replace PACKAGE BODY session_pkg AS
             invalid_grade_exc EXCEPTION;
             invalid_subject_exc EXCEPTION;
             grade           CHAR(1);
+            student_not_found_exception EXCEPTION;
         BEGIN
             OPEN recordbook_cursor;
             FETCH recordbook_cursor INTO subjects; -- Запись одна
+            IF
+                recordbook_cursor%notfound
+            THEN
+                RAISE student_not_found_exception;
+            END IF;
             CLOSE recordbook_cursor;
             LOOP
                 EXIT WHEN iterator > subjects.last;
@@ -583,8 +635,12 @@ create or replace PACKAGE BODY session_pkg AS
         EXCEPTION
             WHEN invalid_grade_exc THEN
                 dbms_output.put_line('Неверно введена оценка');
+            WHEN student_not_found_exception THEN
+                dbms_output.put_line('Студент не найден');
             WHEN invalid_subject_exc THEN
                 dbms_output.put_line('Такого предмета не существует, увы');
+            WHEN OTHERS THEN
+                dbms_output.put_line('Ошибка данных');
         END;
     END passexam;
 
@@ -618,6 +674,7 @@ create or replace PACKAGE BODY session_pkg AS
                 dbms_output.put_line(days
                 || ' дней');
                 CLOSE group_session_cursor;
+                dbms_output.put_line('****************');
             END LOOP;
 
         END;
@@ -649,24 +706,36 @@ create or replace PACKAGE BODY session_pkg AS
             recordbook_item     type_student_subject;
             iterator            NUMBER := 1;
             subject_contains    BOOLEAN := false;
+            student_not_found_exception EXCEPTION;
         BEGIN
         -- считали старую зачетку
             OPEN recordbook_cursor;
             FETCH recordbook_cursor INTO subjects_list_old;
+            IF
+                ( recordbook_cursor%notfound )
+            THEN
+                CLOSE recordbook_cursor;
+                RAISE student_not_found_exception;
+            END IF;
             CLOSE recordbook_cursor;
             -- пробегаемся по списку предметов...
             FOR subject_item IN subjects_cursor LOOP
                 subject_contains := false;
                 -- и по списку в старой зачетке
-                FOR iterator IN 1..subjects_list_old.last LOOP
-                    IF
-                        subjects_list_old(iterator).subject_name = subject_item.subject_name
-                    THEN
-                        subject_contains := true;
-                        recordbook_item := subjects_list_old(iterator);
-                        EXIT;
-                    END IF;
-                END LOOP;
+                IF
+                    subjects_list_old.last <> 0
+                THEN
+                    FOR iterator IN 1..subjects_list_old.last LOOP
+                        IF
+                            subjects_list_old(iterator).subject_name = subject_item.subject_name
+                        THEN
+                            subject_contains := true;
+                            recordbook_item := subjects_list_old(iterator);
+                            EXIT;
+                        END IF;
+                    END LOOP;
+
+                END IF;
 
                 subjects_list_new.extend;
                 IF
@@ -692,6 +761,11 @@ create or replace PACKAGE BODY session_pkg AS
             WHERE
                 student_id = s_id;
 
+        EXCEPTION
+            WHEN student_not_found_exception THEN
+                dbms_output.put_line('Студент не найден');
+            WHEN OTHERS THEN
+                dbms_output.put_line('Ошибка данных');
         END;
     END movestudent;
 
@@ -720,24 +794,30 @@ create or replace PACKAGE BODY session_pkg AS
                 bad_grades_count := 0;
                 good_grades_count := 0;
                 best_grades_count := 0;
-                FOR iterator IN 1..student_grades.last LOOP
-                    grade := student_grades(iterator).subject_grade;
-                    IF
-                        grade IS NULL OR grade = 'N'
-                    THEN
-                        bad_grades_count := bad_grades_count + 1;
-                    ELSIF grade = 'Y' OR to_number(grade) < 5 THEN
-                        good_grades_count := good_grades_count + 1;
-                        best_grades_count := best_grades_count + 1;
-                    ELSE
-                        best_grades_count := best_grades_count + 1;
-                    END IF;
+                IF
+                    student_grades.last <> 0
+                THEN
+                    FOR iterator IN 1..student_grades.last LOOP
+                        grade := student_grades(iterator).subject_grade;
+                        IF
+                            grade IS NULL OR grade = 'N'
+                        THEN
+                            bad_grades_count := bad_grades_count + 1;
+                        ELSIF grade = 'Y' OR to_number(grade) < 5 THEN
+                            good_grades_count := good_grades_count + 1;
+                            best_grades_count := best_grades_count + 1;
+                        ELSE
+                            best_grades_count := best_grades_count + 1;
+                        END IF;
 
-                END LOOP;
+                    END LOOP;
+                END IF;
 
                 IF
-                    bad_grades_count > 0
+                    student_grades.last IS NULL
                 THEN
+                    s_grant := standard_grant;
+                ELSIF bad_grades_count > 0 THEN
                     s_grant := 0;
                 ELSIF best_grades_count = student_grades.last THEN
                     s_grant := upper_grant;
@@ -750,16 +830,6 @@ create or replace PACKAGE BODY session_pkg AS
                         students.student_grant = s_grant
                 WHERE
                     students.student_id = student_recordbook.student_id;
-
-                dbms_output.put_line(student_recordbook.student_id
-                || ' '
-                || bad_grades_count
-                || ' '
-                || good_grades_count
-                || ' '
-                || best_grades_count
-                || ' '
-                || s_grant);
 
             END LOOP;
 
@@ -802,8 +872,7 @@ create or replace PACKAGE BODY session_pkg AS
                 FROM
                     students
                 WHERE
-                    students.student_group = stud_group.student_group
-                    AND   students.student_grant > 0;
+                    students.student_group = stud_group.student_group;
 
                 dbms_output.put_line('Из них получают стипендию: '
                 || stud);
@@ -814,7 +883,8 @@ create or replace PACKAGE BODY session_pkg AS
                 FROM
                     students
                 WHERE
-                    students.student_group = stud_group.student_group;
+                    students.student_group = stud_group.student_group
+                    AND   students.student_grant > 0;
 
                 dbms_output.put_line('Средняя стипендия по группе: '
                 || avg_grant);
@@ -834,6 +904,13 @@ create or replace PACKAGE BODY session_pkg AS
             END LOOP;
 
             dbms_output.put_line('Для университета:');
+            SELECT
+                COUNT(*)
+            INTO
+                stud
+            FROM
+                students;
+
             dbms_output.put_line('Всего студентов в университете: '
             || stud);
             SELECT
@@ -1027,36 +1104,44 @@ create or replace PACKAGE BODY session_pkg AS
             grades_count   NUMBER := 0;
             grades_sum     NUMBER := 0;
             iterator       NUMBER;
+            avg_grades     NUMBER;
         BEGIN
             FOR student IN students_cursor LOOP
                 grades_count := 0;
                 grades_sum := 0;
-                FOR iterator IN 1..student.student_subjects.last LOOP
-                    dbms_output.put_line(student.student_subjects(iterator).subject_reporting_form);
-                    IF
-                        ( student.student_subjects(iterator).subject_reporting_form = 'экзамен' )
-                    THEN
-                        grades_count := grades_count + 1;
+                IF
+                    student.student_subjects.last IS NOT NULL
+                THEN
+                    FOR iterator IN 1..student.student_subjects.last LOOP
                         IF
-                            ( student.student_subjects(iterator).subject_grade IS NULL )
+                            ( student.student_subjects(iterator).subject_reporting_form = 'экзамен' )
                         THEN
-                            grades_sum := grades_sum + 2;
-                        ELSE
-                            grades_sum := grades_sum + to_number(student.student_subjects(iterator).subject_grade);
+                            grades_count := grades_count + 1;
+                            IF
+                                ( student.student_subjects(iterator).subject_grade IS NULL )
+                            THEN
+                                grades_sum := grades_sum + 2;
+                            ELSE
+                                grades_sum := grades_sum + to_number(student.student_subjects(iterator).subject_grade);
+                            END IF;
+
                         END IF;
+                    END LOOP;
 
-                    END IF;
+                    avg_grades := grades_sum / grades_count;
+                ELSE
+                    avg_grades := grades_sum / 1;
+                END IF;
 
-                END LOOP;
+                dbms_output.put_line('Средняя успеваемость студента '
+                || student.student_name
+                || ': '
+                || avg_grades
+                || ' по '
+                || grades_count
+                || ' предметам');
 
             END LOOP;
-
-            dbms_output.put_line('Средняя успеваемость студента '
-            || ': '
-            || grades_sum / grades_count
-            || ' по '
-            || grades_count
-            || ' предметам');
 
         END;
     END getaveragegrades;
