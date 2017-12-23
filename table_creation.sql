@@ -7,7 +7,7 @@ CREATE TABLE students (
     student_id      NUMBER(7,0) NOT NULL,
     student_name    VARCHAR2(40 BYTE) NOT NULL,
     student_group   VARCHAR2(7 BYTE) NOT NULL,
-    student_grant   NUMBER(7,2)
+    student_grant   NUMBER(7,2) DEFAULT 0
 );
 
 ALTER TABLE students ADD CONSTRAINT students_id_pk PRIMARY KEY ( student_id ) ENABLE;
@@ -53,7 +53,6 @@ COMMENT ON COLUMN recordbooks.student_id IS
 COMMENT ON COLUMN recordbooks.student_subjects IS
     'список предметов для сдачи';
 
-
 /*
 ////////////////////////////////////////////////////////////////////////////////
 // Создание таблицы предметов
@@ -61,7 +60,7 @@ COMMENT ON COLUMN recordbooks.student_subjects IS
 */
 
 CREATE TABLE subjects (
-    subject_name             VARCHAR2(20 BYTE) NOT NULL,
+    subject_name             VARCHAR2(40 BYTE) NOT NULL,
     subject_date             DATE NOT NULL,
     subject_reporting_form   VARCHAR2(20) NOT NULL,
     subject_group            VARCHAR2(7 BYTE) NOT NULL,
@@ -84,7 +83,10 @@ ALTER TABLE subjects
     ADD CONSTRAINT subject_teacher_name_nn CHECK ( "SUBJECT_TEACHER_NAME" IS NOT NULL ) ENABLE;
     
 CREATE UNIQUE INDEX uq_subjects_same_pair
-    ON subjects(subject_name, subject_reporting_form, subject_group);
+    ON subjects(subject_name, subject_group);
     
 CREATE UNIQUE INDEX uq_subjects_same_day
     ON subjects(subject_group, subject_date);
+    
+ALTER TABLE subjects 
+    ADD CONSTRAINT reporting_form_value CHECK ("SUBJECT_REPORTING_FORM" IN ('зачет', 'экзамен'));
