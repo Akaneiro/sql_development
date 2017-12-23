@@ -29,7 +29,20 @@ COMMENT ON COLUMN students.student_group IS
 
 COMMENT ON COLUMN students.student_grant IS
     'Стипендия студента';
-
+    
+CREATE SEQUENCE students_seq
+START WITH 1000000 
+INCREMENT BY 1 
+NOMAXVALUE;
+    
+create or replace trigger students_id_trg
+before insert on students
+for each row
+begin
+  if :new.student_id is null then
+    select students_seq.nextval into :new.student_id from dual;
+  end if;
+end;
 
 /*
 ////////////////////////////////////////////////////////////////////////////////

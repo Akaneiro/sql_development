@@ -10,17 +10,16 @@ create or replace PACKAGE session_pkg IS
     PROCEDURE getsubjects;
 
     PROCEDURE addstudent (
-        student_id      NUMBER,
         student_name    VARCHAR2,
         student_group   VARCHAR2
     );
 
     PROCEDURE addsubject (
-        subject_name             VARCHAR2,
-        subject_date             DATE,
-        subject_reporting_form   VARCHAR2,
-        subject_group            VARCHAR2,
-        subject_teacher_name     VARCHAR2
+        s_name             VARCHAR2,
+        s_date             DATE,
+        s_reporting_form   VARCHAR2,
+        s_group            VARCHAR2,
+        s_teacher_name     VARCHAR2
     );
 
     PROCEDURE firestudent (
@@ -58,15 +57,16 @@ create or replace PACKAGE session_pkg IS
     PROCEDURE getaveragegrants;
     
     PROCEDURE getteachersgrades;
+    
+    PROCEDURE getaveragegrades;
 
 END session_pkg;
 /
 
-CREATE OR REPLACE PACKAGE BODY session_pkg AS
+create or replace PACKAGE BODY session_pkg AS
     /* Добавление студента */
 
     PROCEDURE addstudent (
-        student_id      NUMBER,
         student_name    VARCHAR2,
         student_group   VARCHAR2
     )
@@ -82,13 +82,12 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 subjects.subject_group = student_group;
 
             iterator           INTEGER := 1;
+            s_id NUMBER;
         BEGIN
             INSERT INTO students (
-                students.student_id,
                 students.student_name,
                 students.student_group
             ) VALUES (
-                student_id,
                 student_name,
                 student_group
             );
@@ -101,11 +100,15 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 iterator := iterator + 1;
             END LOOP;
 
+                select student_id INTO s_id
+                  from students
+                 where students.student_id = ( select max(student_id) from students );
+
             INSERT INTO recordbooks (
                 recordbooks.student_id,
                 recordbooks.student_subjects
             ) VALUES (
-                student_id,
+                s_id,
                 student_subjects
             );
 
@@ -115,11 +118,11 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
     /* Добавление предмета */
 
     PROCEDURE addsubject (
-        subject_name             VARCHAR2,
-        subject_date             DATE,
-        subject_reporting_form   VARCHAR2,
-        subject_group            VARCHAR2,
-        subject_teacher_name     VARCHAR2
+        s_name             VARCHAR2,
+        s_date             DATE,
+        s_reporting_form   VARCHAR2,
+        s_group            VARCHAR2,
+        s_teacher_name     VARCHAR2
     )
         AS
     BEGIN
@@ -142,9 +145,51 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                  WHERE
                 recordbooks.student_id = s_id;
 
-            s_id       NUMBER;
-            subjects   type_subjects;
+            s_id           NUMBER;
+            subjects       type_subjects;
+            credit_count   NUMBER;
+            exam_count     NUMBER;
+            invalid_credit_count EXCEPTION;
+            invalid_exams_count EXCEPTION;
         BEGIN
+            IF
+                ( s_reporting_form = 'зачет' )
+            THEN
+                SELECT
+                    COUNT(*)
+                INTO
+                    credit_count
+                FROM
+                    subjects
+                WHERE
+                    subjects.subject_reporting_form = s_reporting_form;
+
+                IF
+                    credit_count = 6
+                THEN
+                    RAISE invalid_credit_count;
+                END IF;
+            END IF;
+
+            IF
+                ( s_reporting_form = 'экзамен' )
+            THEN
+                SELECT
+                    COUNT(*)
+                INTO
+                    exam_count
+                FROM
+                    subjects
+                WHERE
+                    subjects.subject_reporting_form = s_reporting_form;
+
+                IF
+                    exam_count = 6
+                THEN
+                    RAISE invalid_exams_count;
+                END IF;
+            END IF;
+
             INSERT INTO subjects (
                 subjects.subject_name,
                 subjects.subject_date,
@@ -152,21 +197,21 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 subjects.subject_group,
                 subjects.subject_teacher_name
             ) VALUES (
-                subject_name,
-                subject_date,
-                subject_reporting_form,
-                subject_group,
-                subject_teacher_name
+                s_name,
+                s_date,
+                s_reporting_form,
+                s_group,
+                s_teacher_name
             );
 
-            OPEN group_cursor(subject_group);
+            OPEN group_cursor(s_group);
             LOOP
                 FETCH group_cursor INTO s_id;
                 EXIT WHEN group_cursor%notfound;
                 OPEN recordbooks_cursor(s_id);
                 FETCH recordbooks_cursor INTO subjects;
                 subjects.extend;
-                subjects(subjects.last) := type_student_subject(subject_name,subject_reporting_form,NULL);
+                subjects(subjects.last) := type_student_subject(s_name,s_reporting_form,NULL);
                 UPDATE recordbooks
                     SET
                         student_subjects = subjects
@@ -177,6 +222,9 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             END LOOP;
 
             CLOSE group_cursor;
+        EXCEPTION
+            WHEN invalid_credit_count THEN
+                dbms_output.put_line('Количество зачетов слишком велико!');
         END;
     END addsubject;
 
@@ -953,5 +1001,64 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
 
         END;
     END getteachersgrades;
+
+    PROCEDURE getaveragegrades
+        AS
+    BEGIN
+        DECLARE
+            CURSOR students_cursor IS SELECT
+                student_id,
+                student_name,
+                student_subjects
+                                      FROM
+                (
+                    SELECT
+                        students.student_id student_id,
+                        students.student_name student_name,
+                        students.student_group student_group,
+                        students.student_grant student_grant,
+                        recordbooks.student_id student_id_0,
+                        recordbooks.student_subjects student_subjects
+                    FROM
+                        students
+                        INNER JOIN recordbooks ON students.student_id = recordbooks.student_id
+                );
+
+            grades_count   NUMBER := 0;
+            grades_sum     NUMBER := 0;
+            iterator       NUMBER;
+        BEGIN
+            FOR student IN students_cursor LOOP
+                grades_count := 0;
+                grades_sum := 0;
+                FOR iterator IN 1..student.student_subjects.last LOOP
+                    dbms_output.put_line(student.student_subjects(iterator).subject_reporting_form);
+                    IF
+                        ( student.student_subjects(iterator).subject_reporting_form = 'экзамен' )
+                    THEN
+                        grades_count := grades_count + 1;
+                        IF
+                            ( student.student_subjects(iterator).subject_grade IS NULL )
+                        THEN
+                            grades_sum := grades_sum + 2;
+                        ELSE
+                            grades_sum := grades_sum + to_number(student.student_subjects(iterator).subject_grade);
+                        END IF;
+
+                    END IF;
+
+                END LOOP;
+
+            END LOOP;
+
+            dbms_output.put_line('Средняя успеваемость студента '
+            || ': '
+            || grades_sum / grades_count
+            || ' по '
+            || grades_count
+            || ' предметам');
+
+        END;
+    END getaveragegrades;
 
 END session_pkg;
