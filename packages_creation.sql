@@ -92,6 +92,11 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             );
 
         END;
+
+        dbms_output.put_line('Студент '
+        || student_name
+        || ' добавлен в группу '
+        || student_group);
     END addstudent;
 
     /* Добавление предмета */
@@ -137,6 +142,10 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 s_teacher_name
             );
 
+            dbms_output.put_line('Для группы '
+            || s_group
+            || ' добавлен предмет '
+            || s_name);
         EXCEPTION
             WHEN invalid_credit_count THEN
                 dbms_output.put_line('Количество зачетов слишком велико');
@@ -203,6 +212,11 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 WHERE
                     students.student_id = s_id;
 
+                dbms_output.put_line('Студент со студенческим билетом '
+                || s_id
+                || ' отчислен');
+            ELSE
+                dbms_output.put_line('Студент не отчислен');
             END IF;
 
         EXCEPTION
@@ -239,11 +253,11 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 FETCH students_list INTO student;
                 EXIT WHEN students_list%notfound;
                 dbms_output.put_line(student.s_id
-                || ' | '
+                || ' | Имя: '
                 || student.s_name
-                || ' | '
+                || ' | Группа: '
                 || student.s_group
-                || ' | '
+                || ' | Стипендия: '
                 || student.s_grant);
 
             END LOOP;
@@ -265,14 +279,15 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
 
         BEGIN
             FOR subject IN subjects_list LOOP
-                dbms_output.put_line(subject.subject_name
-                || ' | '
+                dbms_output.put_line('Предмет: '
+                || subject.subject_name
+                || ' | Дата: '
                 || subject.subject_date
-                || ' | '
+                || ' | Форма отчетности: '
                 || subject.subject_reporting_form
-                || ' | '
+                || ' | Группа: '
                 || subject.subject_group
-                || ' | '
+                || ' | Преподаватель: '
                 || subject.subject_teacher_name);
             END LOOP;
 
@@ -310,6 +325,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             student    student_cursor%rowtype;
             iterator   NUMBER;
             student_not_found_exception EXCEPTION;
+            grade      CHAR(200);
         BEGIN
             OPEN student_cursor;
             FETCH student_cursor INTO student;
@@ -323,9 +339,18 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             dbms_output.put_line('Успеваемость студента '
             || student.student_name);
             FOR iterator IN 1..student.student_subjects.count LOOP
+                IF
+                    student.student_subjects(iterator).subject_grade IS NULL
+                THEN
+                    grade := 'неявка';
+                ELSE
+                    grade := student.student_subjects(iterator).subject_grade;
+                END IF;
+
                 dbms_output.put_line(student.student_subjects(iterator).subject_name
                 || ': '
-                || student.student_subjects(iterator).subject_grade);
+                || grade);
+
             END LOOP;
 
         EXCEPTION
@@ -356,6 +381,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
 
             iterator        NUMBER;
             subjects        type_subjects;
+            grade           CHAR(200);
         BEGIN
             IF
                 ( s_group IS NULL )
@@ -381,24 +407,33 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             LOOP
                 FETCH students_list INTO student;
                 EXIT WHEN students_list%notfound;
-                dbms_output.put_line(student.s_id
-                || ' | '
+                dbms_output.put_line('Успеваемость студента '
                 || student.s_name
-                || ' | '
+                || ' из группы '
                 || student.s_group);
 
                 FOR grades IN grades_cursor(student.s_id) LOOP
                     subjects := grades.student_subjects;
                     FOR iterator IN 1..subjects.count LOOP
+                        IF
+                            subjects(iterator).subject_grade IS NULL
+                        THEN
+                            grade := 'неявка';
+                        ELSE
+                            grade := subjects(iterator).subject_grade;
+                        END IF;
+
                         dbms_output.put_line(subjects(iterator).subject_name
-                        || ' | '
+                        || ': '
                         || subjects(iterator).subject_reporting_form
-                        || ' | '
-                        || subjects(iterator).subject_grade);
+                        || '; статус: '
+                        || grade);
+
                     END LOOP;
 
                 END LOOP;
 
+                dbms_output.put_line('****************');
             END LOOP;
 
             CLOSE students_list;
@@ -670,6 +705,8 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             WHERE
                 student_id = s_id;
 
+            dbms_output.put_line('Студент перемещен в группу '
+            || s_group);
         EXCEPTION
             WHEN student_not_found_exception THEN
                 dbms_output.put_line('Студент не найден');
@@ -697,7 +734,13 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             iterator            NUMBER;
             grade               CHAR;
             s_grant             NUMBER;
+            grant_not_initialized EXCEPTION;
         BEGIN
+            IF
+                ( standard_grant IS NULL OR upper_grant IS NULL )
+            THEN
+                RAISE grant_not_initialized;
+            END IF;
             FOR student_recordbook IN students_recordbooks LOOP
                 student_grades := student_recordbook.student_subjects;
                 bad_grades_count := 0;
@@ -742,6 +785,9 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
 
             END LOOP;
 
+        EXCEPTION
+            WHEN grant_not_initialized THEN
+                dbms_output.put_line('Неверно указан размер стипендии');
         END;
     END setgrants;
 
@@ -1045,7 +1091,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 dbms_output.put_line('Средняя успеваемость студента '
                 || student.student_name
                 || ': '
-                || avg_grades
+                || round(avg_grades,2)
                 || ' по '
                 || grades_count
                 || ' предметам');
