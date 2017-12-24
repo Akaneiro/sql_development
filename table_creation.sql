@@ -193,3 +193,88 @@ BEGIN
     CLOSE student_cursor;
 END;
 /
+
+CREATE OR REPLACE TRIGGER subjects_before_insert BEFORE
+    INSERT ON subjects
+    FOR EACH ROW
+DECLARE
+    credit_count    NUMBER;
+    exam_count      NUMBER;
+    invalid_credit_count EXCEPTION;
+    PRAGMA exception_init ( invalid_credit_count,-20098 );
+    invalid_exams_count EXCEPTION;
+    PRAGMA exception_init ( invalid_exams_count,-20099 );
+    invalid_exams_date EXCEPTION;
+    PRAGMA exception_init ( invalid_exams_date,-20097 );
+    max_exam_date   DATE;
+BEGIN
+    IF
+        (:new.subject_reporting_form = 'зачет' )
+    THEN
+        SELECT
+            COUNT(*)
+        INTO
+            credit_count
+        FROM
+            subjects
+        WHERE
+            subjects.subject_reporting_form =:new.subject_reporting_form;
+
+        SELECT
+            MIN(subjects.subject_date)
+        INTO
+            max_exam_date
+        FROM
+            subjects
+        WHERE
+            subjects.subject_group =:new.subject_group
+            AND   subjects.subject_reporting_form = 'экзамен';
+
+        IF
+            credit_count > 5
+        THEN
+            RAISE invalid_credit_count;
+        END IF;
+        IF
+            max_exam_date <:new.subject_date
+        THEN
+            RAISE invalid_exams_date;
+        END IF;
+    END IF;
+
+    IF
+        (:new.subject_reporting_form = 'экзамен' )
+    THEN
+        SELECT
+            COUNT(*)
+        INTO
+            exam_count
+        FROM
+            subjects
+        WHERE
+            subjects.subject_reporting_form =:new.subject_reporting_form;
+
+        SELECT
+            MAX(subjects.subject_date)
+        INTO
+            max_exam_date
+        FROM
+            subjects
+        WHERE
+            subjects.subject_group =:new.subject_group
+            AND   subjects.subject_reporting_form = 'зачет';
+
+        IF
+            exam_count > 4
+        THEN
+            RAISE invalid_exams_count;
+        END IF;
+        IF
+            max_exam_date >:new.subject_date
+        THEN
+            RAISE invalid_exams_date;
+        END IF;
+    END IF;
+
+END;
+/

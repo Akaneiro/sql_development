@@ -91,34 +91,6 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 student_group
             );
 
-            FOR subject IN subjects_list LOOP
-                student_subjects.extend ();
-                student_subjects(student_subjects.last) := type_student_subject(subject.subject_name,subject.subject_reporting_form,0);
-
-            END LOOP;
-
-            SELECT
-                student_id
-            INTO
-                s_id
-            FROM
-                students
-            WHERE
-                students.student_id = (
-                    SELECT
-                        MAX(student_id)
-                    FROM
-                        students
-                );
-
-            INSERT INTO recordbooks (
-                recordbooks.student_id,
-                recordbooks.student_subjects
-            ) VALUES (
-                s_id,
-                student_subjects
-            );
-
         END;
     END addstudent;
 
@@ -143,61 +115,14 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                  WHERE
                 students.student_group = stdnt_group;
 
-            CURSOR recordbooks_cursor (
-                s_id NUMBER
-            ) IS SELECT
-                recordbooks.student_subjects
-                 FROM
-                recordbooks
-                 WHERE
-                recordbooks.student_id = s_id;
-
-            s_id           NUMBER;
-            subjects       type_subjects;
-            credit_count   NUMBER;
-            exam_count     NUMBER;
             invalid_credit_count EXCEPTION;
+            PRAGMA exception_init ( invalid_credit_count,-20098 );
             invalid_exams_count EXCEPTION;
+            PRAGMA exception_init ( invalid_exams_count,-20099 );
             uncorrect_data EXCEPTION;
+            invalid_exams_date EXCEPTION;
+            PRAGMA exception_init ( invalid_exams_date,-20097 );
         BEGIN
-            IF
-                ( s_reporting_form = 'зачет' )
-            THEN
-                SELECT
-                    COUNT(*)
-                INTO
-                    credit_count
-                FROM
-                    subjects
-                WHERE
-                    subjects.subject_reporting_form = s_reporting_form;
-
-                IF
-                    credit_count = 6
-                THEN
-                    RAISE invalid_credit_count;
-                END IF;
-            END IF;
-
-            IF
-                ( s_reporting_form = 'экзамен' )
-            THEN
-                SELECT
-                    COUNT(*)
-                INTO
-                    exam_count
-                FROM
-                    subjects
-                WHERE
-                    subjects.subject_reporting_form = s_reporting_form;
-
-                IF
-                    exam_count = 6
-                THEN
-                    RAISE invalid_exams_count;
-                END IF;
-            END IF;
-
             INSERT INTO subjects (
                 subjects.subject_name,
                 subjects.subject_date,
@@ -212,29 +137,13 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 s_teacher_name
             );
 
-            OPEN group_cursor(s_group);
-            LOOP
-                FETCH group_cursor INTO s_id;
-                EXIT WHEN group_cursor%notfound;
-                OPEN recordbooks_cursor(s_id);
-                FETCH recordbooks_cursor INTO subjects;
-                subjects.extend;
-                subjects(subjects.last) := type_student_subject(s_name,s_reporting_form,NULL);
-                UPDATE recordbooks
-                    SET
-                        student_subjects = subjects
-                WHERE
-                    student_id = s_id;
-
-                CLOSE recordbooks_cursor;
-            END LOOP;
-
-            CLOSE group_cursor;
         EXCEPTION
             WHEN invalid_credit_count THEN
-                dbms_output.put_line('Количество зачетов слишком велико!');
+                dbms_output.put_line('Количество зачетов слишком велико');
             WHEN invalid_exams_count THEN
-                dbms_output.put_line('количество экзаменов слишком велико!');
+                dbms_output.put_line('Количество экзаменов слишком велико');
+            WHEN invalid_exams_date THEN
+                dbms_output.put_line('Неверно указана дата отчетности');
             WHEN OTHERS THEN
                 dbms_output.put_line('Ошибка введенных данных');
         END;
@@ -629,7 +538,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                     student_id = s_id;
 
             ELSE
-                dbms_output.put_line('Нельзя пересдать данный предмет!');
+                dbms_output.put_line('Нельзя пересдать данный предмет');
             END IF;
 
         EXCEPTION
