@@ -67,7 +67,7 @@ DECLARE
 BEGIN
     FOR subject IN subjects_list(:new.student_group) LOOP
         student_subjects.extend ();
-        student_subjects(student_subjects.last) := type_student_subject(subject.subject_name,subject.subject_reporting_form,0);
+        student_subjects(student_subjects.last) := type_student_subject(subject.subject_name,subject.subject_reporting_form,NULL);
 
     END LOOP;
 
