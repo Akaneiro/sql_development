@@ -28,8 +28,6 @@ select * from subjects;
 
 
 
-
-
 DROP TABLE RECORDBOOKS;
 
 DROP TABLE STUDENTS;

@@ -62,7 +62,6 @@ create or replace PACKAGE session_pkg IS
 
 END session_pkg;
 /
-
 CREATE OR REPLACE PACKAGE BODY session_pkg AS
     /* ƒобавление студента */
 
@@ -242,10 +241,10 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             IF
                 ( sort_by_group = 1 )
             THEN
-                OPEN students_list FOR 'Select * from students ORDER BY students.student_group';
+                OPEN students_list FOR 'Select * from students ORDER BY students.student_group, students.student_id';
 
             ELSE
-                OPEN students_list FOR 'Select * from students';
+                OPEN students_list FOR 'Select * from students ORDER BY students.student_id';
 
             END IF;
 
@@ -358,7 +357,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 dbms_output.put_line('—тудент не найден');
         END;
     END getstudentgrades;
-    
+
     -- ”спеваемость студентов группы или всего университета
 
     PROCEDURE getseveralstudentsgrades (
@@ -727,13 +726,14 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                                            FROM
                 recordbooks;
 
-            best_grades_count   NUMBER := 0;
-            good_grades_count   NUMBER := 0;
-            bad_grades_count    NUMBER := 0;
-            student_grades      type_subjects;
-            iterator            NUMBER;
-            grade               CHAR;
-            s_grant             NUMBER;
+            best_grades_count     NUMBER := 0;
+            good_grades_count     NUMBER := 0;
+            middle_grades_count   NUMBER := 0;
+            bad_grades_count      NUMBER := 0;
+            student_grades        type_subjects;
+            iterator              NUMBER;
+            grade                 CHAR;
+            s_grant               NUMBER;
             grant_not_initialized EXCEPTION;
         BEGIN
             IF
@@ -744,6 +744,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
             FOR student_recordbook IN students_recordbooks LOOP
                 student_grades := student_recordbook.student_subjects;
                 bad_grades_count := 0;
+                middle_grades_count := 0;
                 good_grades_count := 0;
                 best_grades_count := 0;
                 IF
@@ -752,13 +753,21 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                     FOR iterator IN 1..student_grades.last LOOP
                         grade := student_grades(iterator).subject_grade;
                         IF
-                            grade IS NULL OR grade = 'N'
+                            grade IS NULL
                         THEN
                             bad_grades_count := bad_grades_count + 1;
-                        ELSIF grade = 'Y' OR to_number(grade) < 5 THEN
+                        ELSIF grade = 'N' THEN
+                            bad_grades_count := bad_grades_count + 1;
+                        ELSIF grade = 'Y' THEN
                             good_grades_count := good_grades_count + 1;
+                            middle_grades_count := middle_grades_count + 1;
                             best_grades_count := best_grades_count + 1;
-                        ELSE
+                        ELSIF to_number(grade) = 3 THEN
+                            middle_grades_count := middle_grades_count + 1;
+                        ELSIF to_number(grade) = 4 THEN
+                            good_grades_count := good_grades_count + 1;
+                        ELSIF to_number(grade) = 5 THEN
+                            good_grades_count := good_grades_count + 1;
                             best_grades_count := best_grades_count + 1;
                         END IF;
 
@@ -775,6 +784,8 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                     s_grant := upper_grant;
                 ELSIF good_grades_count = student_grades.last THEN
                     s_grant := standard_grant;
+                ELSE
+                    s_grant := 0;
                 END IF;
 
                 UPDATE students
@@ -827,7 +838,8 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 FROM
                     students
                 WHERE
-                    students.student_group = stud_group.student_group;
+                    students.student_group = stud_group.student_group
+                    AND   students.student_grant > 0;
 
                 dbms_output.put_line('»з них получают стипендию: '
                 || stud);
@@ -838,11 +850,10 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 FROM
                     students
                 WHERE
-                    students.student_group = stud_group.student_group
-                    AND   students.student_grant > 0;
+                    students.student_group = stud_group.student_group;
 
                 dbms_output.put_line('—редн€€ стипенди€ по группе: '
-                || avg_grant);
+                || round(avg_grant,2) );
                 SELECT
                     AVG(students.student_grant)
                 INTO
@@ -854,7 +865,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                     AND   students.student_grant > 0;
 
                 dbms_output.put_line('—редн€€ стипенди€ по студентам, получающим стипендию: '
-                || avg_grant);
+                || round(avg_grant,2) );
                 dbms_output.put_line('*******************');
             END LOOP;
 
@@ -887,7 +898,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 students;
 
             dbms_output.put_line('—редн€€ стипенди€ по университету: '
-            || avg_grant);
+            || round(avg_grant,2) );
             SELECT
                 AVG(students.student_grant)
             INTO
@@ -898,7 +909,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 students.student_grant > 0;
 
             dbms_output.put_line('—редн€€ стипенди€ по студентам, получающим стипендию: '
-            || avg_grant);
+            || round(avg_grant,2) );
         END;
     END getaveragegrants;
 
@@ -913,7 +924,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 subjects
             GROUP BY
                 subjects.subject_teacher_name;
-                
+
                 -- курсор дл€ предметов преподавател€ по имени
 
             CURSOR teacher_subjects_cursor (
@@ -973,7 +984,7 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                 LOOP
                     FETCH teacher_subjects_cursor INTO teacher_subjects;
                     EXIT WHEN teacher_subjects_cursor%notfound;
-                    
+
                 -- открываем курсор, в котором выборка из студентов группы с данным предметом и формой отчетности
                     OPEN group_cursor(teacher_subjects.subject_group);
                     LOOP
@@ -1083,7 +1094,14 @@ CREATE OR REPLACE PACKAGE BODY session_pkg AS
                         END IF;
                     END LOOP;
 
-                    avg_grades := grades_sum / grades_count;
+                    IF
+                        grades_count = 0
+                    THEN
+                        avg_grades := 0;
+                    ELSE
+                        avg_grades := grades_sum / grades_count;
+                    END IF;
+
                 ELSE
                     avg_grades := grades_sum / 1;
                 END IF;

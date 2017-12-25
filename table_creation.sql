@@ -1,11 +1,13 @@
 /*//////////////////////////////////////////////////////////////////////////////
 // Создание таблицы студентов
 ////////////////////////////////////////////////////////////////////////////////
-*/CREATE TABLE students (
+*/
+
+CREATE TABLE students (
     student_id      NUMBER(7,0) NOT NULL,
     student_name    VARCHAR2(40 BYTE) NOT NULL,
     student_group   VARCHAR2(7 BYTE) NOT NULL,
-    student_grant   NUMBER(7,2) DEFAULT 0
+    student_grant   NUMBER(7,2) DEFAULT 0 NOT NULL
 );
 
 ALTER TABLE students ADD CONSTRAINT students_id_pk PRIMARY KEY ( student_id ) ENABLE;
@@ -46,7 +48,7 @@ BEGIN
 
     END IF;
 END;
-
+/
 CREATE OR REPLACE TRIGGER student_after_insert AFTER
     INSERT ON students
     FOR EACH ROW
@@ -146,7 +148,7 @@ ALTER TABLE subjects
         'экзамен'
     ) );
 
-CREATE OR REPLACE TRIGGER subjects_after_insert AFTER
+create or replace TRIGGER subjects_after_insert AFTER
     INSERT ON subjects
     FOR EACH ROW
 DECLARE
